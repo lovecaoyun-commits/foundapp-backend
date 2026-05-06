@@ -12,7 +12,6 @@ services:
     plan: free
     autoDeploy: true
     envVars:
-        value: "LTAI5t9Xzbgk8WhLsyWQJLCJ"
       - key: OSS_ACCESS_KEY_SECRET
         sync: false
       - key: OSS_BUCKET
