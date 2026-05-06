@@ -10,7 +10,7 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /ping
     plan: free
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: OSS_ACCESS_KEY_ID
         value: "LTAI5t9Xzbgk8WhLsyWQJLCJ"
@@ -26,10 +26,3 @@ services:
         sync: false
       - key: PORT
         value: "10000"
-
-# 可选：关联 PostgreSQL 数据库
-# databases:
-#   - name: foundapp-db
-#     plan: free
-#     databaseName: foundapp
-#     ipAllowList: []
