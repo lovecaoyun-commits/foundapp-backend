@@ -4,10 +4,7 @@ router = APIRouter(prefix="/match", tags=["match"])
 
 @router.get("/recommendations")
 async def get_recommendations():
-    return {
-        "code": 0,
-        "data": []
-    }
+    return {"code": 0, "data": []}
 
 @router.post("/like")
 async def like_user(target_id: str):
