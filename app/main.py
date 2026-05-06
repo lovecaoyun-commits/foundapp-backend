@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import sqlite3
 import json
 import hashlib
 import time
 import re
+from typing import Dict, List
 from contextlib import contextmanager
 
 app = FastAPI(title="FoundApp API", version="2.0.0", root_path="/v1")
@@ -19,6 +21,34 @@ app.add_middleware(
 
 DB_PATH = "/tmp/foundapp.db"
 
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+    
+    async def connect(self, user_id: str, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections[user_id] = websocket
+        # Notify user they connected
+        await websocket.send_json({"type": "connected", "user_id": user_id})
+    
+    def disconnect(self, user_id: str):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+    
+    async def send_to_user(self, user_id: str, message: dict):
+        if user_id in self.active_connections:
+            await self.active_connections[user_id].send_json(message)
+    
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections.values():
+            try:
+                await connection.send_json(message)
+            except:
+                pass
+
+manager = ConnectionManager()
+
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -29,7 +59,7 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, phone TEXT UNIQUE, nickname TEXT DEFAULT '', avatar TEXT DEFAULT '', gender INTEGER DEFAULT 0, birthday TEXT DEFAULT '', bio TEXT DEFAULT '', location TEXT DEFAULT '', password_hash TEXT DEFAULT '', verified INTEGER DEFAULT 0, vip_expire TEXT, created_at REAL, updated_at REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS matches (match_id TEXT PRIMARY KEY, user_id TEXT, target_id TEXT, status TEXT DEFAULT 'matched', created_at REAL)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS messages (msg_id TEXT PRIMARY KEY, match_id TEXT, sender_id TEXT, content TEXT, msg_type TEXT DEFAULT 'text', created_at REAL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS messages (msg_id TEXT PRIMARY KEY, match_id TEXT, sender_id TEXT, receiver_id TEXT, content TEXT, msg_type TEXT DEFAULT 'text', created_at REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS moments (moment_id TEXT PRIMARY KEY, user_id TEXT, content TEXT DEFAULT '', images TEXT DEFAULT '[]', likes TEXT DEFAULT '[]', comments TEXT DEFAULT '[]', created_at REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS wallets (user_id TEXT PRIMARY KEY, coins INTEGER DEFAULT 0, vip_expire TEXT, updated_at REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT PRIMARY KEY, code TEXT, created_at REAL)''')
@@ -56,6 +86,100 @@ def make_token(user_id):
 def validate_phone(p):
     return bool(re.match(r'^1[3-9]\d{9}$', p))
 
+# === WEBSOCKET ===
+@app.websocket("/ws/chat/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    await manager.connect(user_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg = json.loads(data)
+                msg_type = msg.get('type', '')
+                
+                if msg_type == 'ping':
+                    await websocket.send_json({"type": "pong"})
+                
+                elif msg_type == 'chat':
+                    # Save and forward chat message
+                    receiver_id = msg.get('receiver_id', '')
+                    content = msg.get('content', '')
+                    conv_id = msg.get('conv_id', '')
+                    msg_id = msg.get('msg_id', f"ws_{int(time.time()*1000)}")
+                    msg_type_ = msg.get('msg_type', 'text')
+                    
+                    # Save to database
+                    conn = get_conn()
+                    c = conn.cursor()
+                    c.execute('INSERT INTO messages (msg_id, match_id, sender_id, receiver_id, content, msg_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                              (msg_id, conv_id, user_id, receiver_id, content, msg_type_, time.time()))
+                    conn.commit()
+                    conn.close()
+                    
+                    # Send confirmation to sender
+                    await websocket.send_json({
+                        "type": "message_sent",
+                        "msg_id": msg_id,
+                        "status": "delivered"
+                    })
+                    
+                    # Forward to receiver if online
+                    await manager.send_to_user(receiver_id, {
+                        "type": "new_message",
+                        "msg_id": msg_id,
+                        "sender_id": user_id,
+                        "receiver_id": receiver_id,
+                        "content": content,
+                        "msg_type": msg_type_,
+                        "conv_id": conv_id,
+                        "timestamp": int(time.time() * 1000)
+                    })
+                
+                elif msg_type == 'typing':
+                    receiver_id = msg.get('receiver_id', '')
+                    conv_id = msg.get('conv_id', '')
+                    await manager.send_to_user(receiver_id, {
+                        "type": "typing",
+                        "user_id": user_id,
+                        "conv_id": conv_id
+                    })
+                
+                elif msg_type == 'read':
+                    sender_id = msg.get('sender_id', '')
+                    conv_id = msg.get('conv_id', '')
+                    await manager.send_to_user(sender_id, {
+                        "type": "read",
+                        "conv_id": conv_id,
+                        "reader_id": user_id
+                    })
+                
+                elif msg_type == 'fetch_offline':
+                    # Send offline messages
+                    conn = get_conn()
+                    c = conn.cursor()
+                    c.execute('SELECT * FROM messages WHERE receiver_id=? AND created_at > ? ORDER BY created_at ASC',
+                              (user_id, time.time() - 86400))
+                    msgs = c.fetchall()
+                    conn.close()
+                    for m in msgs:
+                        await websocket.send_json({
+                            "type": "new_message",
+                            "msg_id": m['msg_id'],
+                            "sender_id": m['sender_id'],
+                            "receiver_id": m['receiver_id'],
+                            "content": m['content'],
+                            "msg_type": m['msg_type'],
+                            "conv_id": m['match_id'],
+                            "timestamp": int(m['created_at'] * 1000)
+                        })
+            
+            except json.JSONDecodeError:
+                pass
+    
+    except WebSocketDisconnect:
+        manager.disconnect(user_id)
+
+# === REST API ===
 @app.post("/auth/login")
 async def login(req: dict):
     phone, code = req.get('phone',''), req.get('code','')
@@ -153,14 +277,31 @@ async def get_messages(match_id: str, page: int = 1, size: int = 20):
     return {"code": 0, "data": {"messages": [dict(r) for r in rows], "total": len(rows)}}
 
 @app.post("/chat/messages/send")
-async def send_message(match_id: str, sender_id: str, content: str):
-    msg_id = hashlib.md5(f"{match_id}:{sender_id}:{content}".encode()).hexdigest()[:16]
+async def send_message(match_id: str, sender_id: str, receiver_id: str = "", content: str = "", msg_type: str = "text"):
+    msg_id = hashlib.md5(f"{match_id}:{sender_id}:{content}:{time.time()}".encode()).hexdigest()[:16]
     conn = get_conn()
     c = conn.cursor()
-    c.execute('INSERT INTO messages (msg_id, match_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', 
-               (msg_id, match_id, sender_id, content, time.time()))
+    c.execute('INSERT INTO messages (msg_id, match_id, sender_id, receiver_id, content, msg_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+               (msg_id, match_id, sender_id, receiver_id, content, msg_type, time.time()))
     conn.commit()
     conn.close()
+    
+    # Try to notify via WebSocket
+    if receiver_id:
+        try:
+            await manager.send_to_user(receiver_id, {
+                "type": "new_message",
+                "msg_id": msg_id,
+                "sender_id": sender_id,
+                "receiver_id": receiver_id,
+                "content": content,
+                "msg_type": msg_type,
+                "conv_id": match_id,
+                "timestamp": int(time.time() * 1000)
+            })
+        except:
+            pass
+    
     return {"code": 0, "message": "发送成功", "data": {"msg_id": msg_id}}
 
 @app.get("/moments/list")
