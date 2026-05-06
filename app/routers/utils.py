@@ -9,7 +9,7 @@ router = APIRouter(prefix="/utils", tags=["utils"])
 def _d(b64):
     return base64.b64decode(b64.encode()).decode()
 
-OSS_ACCESS_KEY_ID = os.getenv("OSS_ACCESS_KEY_ID") or _d("TFRBSTl0OVh6YmdrOFdoTHN5V1dKTEMj")
+OSS_ACCESS_KEY_ID = os.getenv("OSS_ACCESS_KEY_ID") or _d("TFRBSTV0OVh6YmdrOFdoTHN5V1FKTENK")
 OSS_ACCESS_KEY_SECRET = os.getenv("OSS_ACCESS_KEY_SECRET") or _d("ZW5HcHB5RU9qdHdZbk0xTUFiTmZiMHJRYkQxUmJs")
 OSS_BUCKET = os.getenv("OSS_BUCKET") or "found-app-2026"
 OSS_ENDPOINT = os.getenv("OSS_ENDPOINT") or "oss-cn-beijing.aliyuncs.com"
