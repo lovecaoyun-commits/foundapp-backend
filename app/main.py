@@ -344,6 +344,50 @@ async def like_moment(moment_id: str, user_id: str):
     conn.close()
     return {"code": 0, "message": "已点赞"}
 
+
+// === ANDROID MOMENTS FEED (compatible with FeedItem model) ===
+@app.get("/api/moments/feed")
+async def get_moments_feed(page: int = 1, size: int = 20):
+    offset = (page - 1) * size
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute(`
+        SELECT m.moment_id, m.user_id, m.content, m.images, m.likes, m.comments, m.created_at,
+               u.nickname, u.avatar
+        FROM moments m
+        JOIN users u ON m.user_id = u.user_id
+        ORDER BY m.created_at DESC
+        LIMIT ? OFFSET ?
+    `, (size, offset))
+    rows = c.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        try: images = json.loads(r['images']) if r['images'] else []
+        except: images = []
+        try:
+            likes_list = json.loads(r['likes']) if r['likes'] else []
+            comments_list = json.loads(r['comments']) if r['comments'] else []
+        except:
+            likes_list = []
+            comments_list = []
+        result.append({
+            "id": r['moment_id'],
+            "content": r['content'] or "",
+            "author": {
+                "id": r['user_id'],
+                "nickname": r['nickname'] or "",
+                "avatar": r['avatar'] or ""
+            },
+            "images": images,
+            "likeCount": len(likes_list),
+            "commentCount": len(comments_list),
+            "isLiked": False,
+            "createdAt": str(r['created_at']) if r['created_at'] else ""
+        })
+    return {"code": 0, "data": result}
+
+
 @app.get("/wallet/balance")
 async def get_balance(user_id: str):
     conn = get_conn()
