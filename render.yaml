@@ -12,7 +12,6 @@ services:
     plan: free
     autoDeploy: true
     envVars:
-      - key: OSS_ACCESS_KEY_ID
         value: "LTAI5t9Xzbgk8WhLsyWQJLCJ"
       - key: OSS_ACCESS_KEY_SECRET
         sync: false
