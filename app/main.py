@@ -7,7 +7,7 @@ import time
 import re
 from contextlib import contextmanager
 
-app = FastAPI(title="FoundApp API", version="2.0.0")
+app = FastAPI(title="FoundApp API", version="2.0.0", root_path="/v1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,7 +63,6 @@ async def login(req: dict):
     if code != "000000": return {"code": 400, "message": "验证码错误"}
     user_id = hashlib.md5(phone.encode()).hexdigest()[:16]
     
-    # Use direct connection for reliable commit
     conn = get_conn()
     c = conn.cursor()
     c.execute('SELECT * FROM users WHERE phone=?', (phone,))
