@@ -6,6 +6,7 @@ import hashlib
 import time
 import re
 from contextlib import contextmanager
+import asyncio
 
 app = FastAPI(title="FoundApp API", version="2.0.0")
 
@@ -17,7 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "/var/data/foundapp.db"
+DB_PATH = "/tmp/foundapp.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -48,13 +49,11 @@ def make_token(user_id):
 def validate_phone(p):
     return bool(re.match(r'^1[3-9]\d{9}$', p))
 
-# === AUTH ===
 @app.post("/auth/login")
 async def login(req: dict):
     phone, code = req.get('phone',''), req.get('code','')
     if not validate_phone(phone): return {"code": 400, "message": "手机号格式错误"}
     if code != "000000": return {"code": 400, "message": "验证码错误"}
-    
     user_id = hashlib.md5(phone.encode()).hexdigest()[:16]
     with get_db() as c:
         c.execute('SELECT * FROM users WHERE phone=?', (phone,))
@@ -73,7 +72,6 @@ async def send_code(phone: str):
     if not validate_phone(phone): return {"code": 400, "message": "手机号格式错误"}
     return {"code": 0, "message": "发送成功", "data": {"code": "000000"}}
 
-# === USER ===
 @app.get("/user/profile/{user_id}")
 async def get_profile(user_id: str):
     with get_db() as c:
@@ -88,7 +86,6 @@ async def update_profile(user_id: str, nickname: str = "", avatar: str = "", gen
         c.execute('UPDATE users SET nickname=?, avatar=?, gender=?, birthday=?, bio=?, location=?, updated_at=? WHERE user_id=?', (nickname, avatar, gender, birthday, bio, location, time.time(), user_id))
     return {"code": 0, "message": "更新成功"}
 
-# === MATCH ===
 @app.get("/match/recommendations")
 async def get_recommendations(user_id: str):
     with get_db() as c:
@@ -114,7 +111,6 @@ async def get_matches(user_id: str):
         rows = c.fetchall()
     return {"code": 0, "data": {"matches": [dict(r) for r in rows], "total": len(rows)}}
 
-# === CHAT ===
 @app.get("/chat/messages/{match_id}")
 async def get_messages(match_id: str, page: int = 1, size: int = 20):
     offset = (page - 1) * size
@@ -130,7 +126,6 @@ async def send_message(match_id: str, sender_id: str, content: str):
         c.execute('INSERT INTO messages (msg_id, match_id, sender_id, content) VALUES (?, ?, ?, ?)', (msg_id, match_id, sender_id, content))
     return {"code": 0, "message": "发送成功", "data": {"msg_id": msg_id}}
 
-# === MOMENTS ===
 @app.get("/moments/list")
 async def get_moments(page: int = 1, size: int = 20):
     offset = (page - 1) * size
@@ -157,7 +152,6 @@ async def like_moment(moment_id: str, user_id: str):
             c.execute('UPDATE moments SET likes=? WHERE moment_id=?', (json.dumps(likes), moment_id))
     return {"code": 0, "message": "已点赞"}
 
-# === WALLET ===
 @app.get("/wallet/balance")
 async def get_balance(user_id: str):
     with get_db() as c:
@@ -183,13 +177,11 @@ async def recharge(user_id: str, package_id: str):
         return {"code": 0, "message": "充值成功", "data": {"coins": coins}}
     return {"code": 1, "message": "套餐不存在"}
 
-# === TRTC ===
 @app.post("/trtc/sign")
 async def trtc_sign(user_id: str, room_id: str):
     sig = hashlib.md5(f"{user_id}:{room_id}:{time.time()}".encode()).hexdigest()
     return {"code": 0, "data": {"signature": sig}}
 
-# === UTILS ===
 @app.get("/utils/upload/token")
 async def get_upload_token():
     return {"code": 0, "data": {"token": "", "upload_url": ""}}
@@ -205,7 +197,3 @@ async def ping():
 @app.get("/")
 async def root():
     return {"message": "FoundApp API", "version": "2.0.0"}
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "db": "connected"}
