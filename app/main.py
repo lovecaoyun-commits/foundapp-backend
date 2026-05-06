@@ -6,7 +6,6 @@ import hashlib
 import time
 import re
 from contextlib import contextmanager
-import asyncio
 
 app = FastAPI(title="FoundApp API", version="2.0.0")
 
@@ -20,8 +19,13 @@ app.add_middleware(
 
 DB_PATH = "/tmp/foundapp.db"
 
-def init_db():
+def get_conn():
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_conn()
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, phone TEXT UNIQUE, nickname TEXT DEFAULT '', avatar TEXT DEFAULT '', gender INTEGER DEFAULT 0, birthday TEXT DEFAULT '', bio TEXT DEFAULT '', location TEXT DEFAULT '', password_hash TEXT DEFAULT '', verified INTEGER DEFAULT 0, vip_expire TEXT, created_at REAL, updated_at REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS matches (match_id TEXT PRIMARY KEY, user_id TEXT, target_id TEXT, status TEXT DEFAULT 'matched', created_at REAL)''')
@@ -34,10 +38,13 @@ def init_db():
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_conn()
     try:
         yield conn.cursor()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
     finally:
         conn.close()
 
@@ -55,16 +62,26 @@ async def login(req: dict):
     if not validate_phone(phone): return {"code": 400, "message": "手机号格式错误"}
     if code != "000000": return {"code": 400, "message": "验证码错误"}
     user_id = hashlib.md5(phone.encode()).hexdigest()[:16]
-    with get_db() as c:
+    
+    # Use direct connection for reliable commit
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT * FROM users WHERE phone=?', (phone,))
+    user = c.fetchone()
+    
+    if not user:
+        c.execute('INSERT INTO users (user_id, phone, created_at, updated_at) VALUES (?, ?, ?, ?)', 
+                   (user_id, phone, time.time(), time.time()))
+        c.execute('INSERT INTO wallets (user_id, coins, updated_at) VALUES (?, 0, ?)', 
+                   (user_id, time.time()))
+        conn.commit()
         c.execute('SELECT * FROM users WHERE phone=?', (phone,))
         user = c.fetchone()
-        if not user:
-            c.execute('INSERT INTO users (user_id, phone) VALUES (?, ?)', (user_id, phone))
-            c.execute('INSERT INTO wallets (user_id, coins) VALUES (?, 0)', (user_id,))
-            c.execute('SELECT * FROM users WHERE phone=?', (phone,))
-            user = c.fetchone()
-        c.execute('SELECT coins FROM wallets WHERE user_id=?', (user['user_id'],))
-        w = c.fetchone()
+    
+    c.execute('SELECT coins FROM wallets WHERE user_id=?', (user['user_id'],))
+    w = c.fetchone()
+    conn.close()
+    
     return {"code": 0, "data": {"user_id": user['user_id'], "phone": user['phone'], "nickname": user['nickname'], "avatar": user['avatar'], "access_token": make_token(user['user_id']), "expires_in": 604800, "coins": w['coins'] if w else 0}}
 
 @app.post("/auth/send_code")
@@ -74,30 +91,43 @@ async def send_code(phone: str):
 
 @app.get("/user/profile/{user_id}")
 async def get_profile(user_id: str):
-    with get_db() as c:
-        c.execute('SELECT * FROM users WHERE user_id=?', (user_id,))
-        u = c.fetchone()
-    if not u: return {"code": 404, "message": "用户不存在"}
-    return {"code": 0, "data": dict(u)}
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT * FROM users WHERE user_id=?', (user_id,))
+    u = c.fetchone()
+    result = {"code": 0, "data": dict(u)} if u else {"code": 404, "message": "用户不存在"}
+    conn.close()
+    return result
 
 @app.post("/user/profile/update")
 async def update_profile(user_id: str, nickname: str = "", avatar: str = "", gender: int = 0, birthday: str = "", bio: str = "", location: str = ""):
-    with get_db() as c:
-        c.execute('UPDATE users SET nickname=?, avatar=?, gender=?, birthday=?, bio=?, location=?, updated_at=? WHERE user_id=?', (nickname, avatar, gender, birthday, bio, location, time.time(), user_id))
-    return {"code": 0, "message": "更新成功"}
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('UPDATE users SET nickname=?, avatar=?, gender=?, birthday=?, bio=?, location=?, updated_at=? WHERE user_id=?', 
+               (nickname, avatar, gender, birthday, bio, location, time.time(), user_id))
+    conn.commit()
+    rows = c.rowcount
+    conn.close()
+    return {"code": 0, "message": "更新成功" if rows > 0 else "用户不存在"}
 
 @app.get("/match/recommendations")
 async def get_recommendations(user_id: str):
-    with get_db() as c:
-        c.execute('SELECT user_id, phone, nickname, avatar, gender, bio, location FROM users WHERE user_id != ? AND user_id NOT IN (SELECT target_id FROM matches WHERE user_id = ?) LIMIT 20', (user_id, user_id))
-        rows = c.fetchall()
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT user_id, phone, nickname, avatar, gender, bio, location FROM users WHERE user_id != ? AND user_id NOT IN (SELECT target_id FROM matches WHERE user_id = ?) LIMIT 20', (user_id, user_id))
+    rows = c.fetchall()
+    conn.close()
     return {"code": 0, "data": {"users": [dict(r) for r in rows], "total": len(rows)}}
 
 @app.post("/match/like")
 async def like_user(user_id: str, target_id: str):
     match_id = hashlib.md5(f"{user_id}:{target_id}".encode()).hexdigest()[:16]
-    with get_db() as c:
-        c.execute('INSERT OR IGNORE INTO matches (match_id, user_id, target_id) VALUES (?, ?, ?)', (match_id, user_id, target_id))
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('INSERT OR IGNORE INTO matches (match_id, user_id, target_id, created_at) VALUES (?, ?, ?, ?)', 
+               (match_id, user_id, target_id, time.time()))
+    conn.commit()
+    conn.close()
     return {"code": 0, "message": "已喜欢", "data": {"match_id": match_id}}
 
 @app.post("/match/dislike")
@@ -106,62 +136,83 @@ async def dislike_user(user_id: str, target_id: str):
 
 @app.get("/match/list")
 async def get_matches(user_id: str):
-    with get_db() as c:
-        c.execute('SELECT * FROM matches WHERE user_id=? OR target_id=? ORDER BY created_at DESC', (user_id, user_id))
-        rows = c.fetchall()
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT * FROM matches WHERE user_id=? OR target_id=? ORDER BY created_at DESC', (user_id, user_id))
+    rows = c.fetchall()
+    conn.close()
     return {"code": 0, "data": {"matches": [dict(r) for r in rows], "total": len(rows)}}
 
 @app.get("/chat/messages/{match_id}")
 async def get_messages(match_id: str, page: int = 1, size: int = 20):
     offset = (page - 1) * size
-    with get_db() as c:
-        c.execute('SELECT * FROM messages WHERE match_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?', (match_id, size, offset))
-        rows = c.fetchall()
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT * FROM messages WHERE match_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?', (match_id, size, offset))
+    rows = c.fetchall()
+    conn.close()
     return {"code": 0, "data": {"messages": [dict(r) for r in rows], "total": len(rows)}}
 
 @app.post("/chat/messages/send")
 async def send_message(match_id: str, sender_id: str, content: str):
     msg_id = hashlib.md5(f"{match_id}:{sender_id}:{content}".encode()).hexdigest()[:16]
-    with get_db() as c:
-        c.execute('INSERT INTO messages (msg_id, match_id, sender_id, content) VALUES (?, ?, ?, ?)', (msg_id, match_id, sender_id, content))
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('INSERT INTO messages (msg_id, match_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', 
+               (msg_id, match_id, sender_id, content, time.time()))
+    conn.commit()
+    conn.close()
     return {"code": 0, "message": "发送成功", "data": {"msg_id": msg_id}}
 
 @app.get("/moments/list")
 async def get_moments(page: int = 1, size: int = 20):
     offset = (page - 1) * size
-    with get_db() as c:
-        c.execute('SELECT m.*, u.nickname, u.avatar FROM moments m JOIN users u ON m.user_id=u.user_id ORDER BY m.created_at DESC LIMIT ? OFFSET ?', (size, offset))
-        rows = c.fetchall()
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT m.*, u.nickname, u.avatar FROM moments m JOIN users u ON m.user_id=u.user_id ORDER BY m.created_at DESC LIMIT ? OFFSET ?', (size, offset))
+    rows = c.fetchall()
+    conn.close()
     return {"code": 0, "data": {"moments": [dict(r) for r in rows], "total": len(rows)}}
 
 @app.post("/moments/publish")
 async def publish(user_id: str, content: str = "", images: str = "[]"):
     moment_id = hashlib.md5(f"{user_id}:{content}:{time.time()}".encode()).hexdigest()[:16]
-    with get_db() as c:
-        c.execute('INSERT INTO moments (moment_id, user_id, content, images) VALUES (?, ?, ?, ?)', (moment_id, user_id, content, images))
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('INSERT INTO moments (moment_id, user_id, content, images, created_at) VALUES (?, ?, ?, ?, ?)', 
+               (moment_id, user_id, content, images, time.time()))
+    conn.commit()
+    conn.close()
     return {"code": 0, "message": "发布成功", "data": {"moment_id": moment_id}}
 
 @app.post("/moments/like")
 async def like_moment(moment_id: str, user_id: str):
-    with get_db() as c:
-        c.execute('SELECT likes FROM moments WHERE moment_id=?', (moment_id,))
-        r = c.fetchone()
-        if r:
-            likes = json.loads(r['likes'])
-            if user_id not in likes: likes.append(user_id)
-            c.execute('UPDATE moments SET likes=? WHERE moment_id=?', (json.dumps(likes), moment_id))
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT likes FROM moments WHERE moment_id=?', (moment_id,))
+    r = c.fetchone()
+    if r:
+        likes = json.loads(r['likes']) if r['likes'] else []
+        if user_id not in likes: likes.append(user_id)
+        c.execute('UPDATE moments SET likes=? WHERE moment_id=?', (json.dumps(likes), moment_id))
+        conn.commit()
+    conn.close()
     return {"code": 0, "message": "已点赞"}
 
 @app.get("/wallet/balance")
 async def get_balance(user_id: str):
-    with get_db() as c:
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT * FROM wallets WHERE user_id=?', (user_id,))
+    w = c.fetchone()
+    if not w:
+        c.execute('INSERT INTO wallets (user_id, coins, updated_at) VALUES (?, 0, ?)', (user_id, time.time()))
+        conn.commit()
         c.execute('SELECT * FROM wallets WHERE user_id=?', (user_id,))
         w = c.fetchone()
-        if not w:
-            c.execute('INSERT INTO wallets (user_id, coins) VALUES (?, 0)', (user_id,))
-            c.execute('SELECT * FROM wallets WHERE user_id=?', (user_id,))
-            w = c.fetchone()
-    return {"code": 0, "data": dict(w)}
+    result = {"code": 0, "data": dict(w)} if w else {"code": 404, "message": "钱包不存在"}
+    conn.close()
+    return result
 
 @app.get("/wallet/recharge/packages")
 async def get_packages():
@@ -172,9 +223,15 @@ async def recharge(user_id: str, package_id: str):
     coins_map = {"p1": 100, "p2": 500, "p3": 1000}
     coins = coins_map.get(package_id, 0)
     if coins > 0:
-        with get_db() as c:
-            c.execute('UPDATE wallets SET coins=coins+? WHERE user_id=?', (coins, user_id))
-        return {"code": 0, "message": "充值成功", "data": {"coins": coins}}
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute('UPDATE wallets SET coins=coins+?, updated_at=? WHERE user_id=?', (coins, time.time(), user_id))
+        conn.commit()
+        rows = c.rowcount
+        conn.close()
+        if rows > 0:
+            return {"code": 0, "message": "充值成功", "data": {"coins": coins}}
+        return {"code": 1, "message": "用户不存在"}
     return {"code": 1, "message": "套餐不存在"}
 
 @app.post("/trtc/sign")
