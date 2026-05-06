@@ -1,57 +1,36 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.auth import create_access_token, create_refresh_token, decode_token
-from app.models.user import User
-from app.database import get_db
-from sqlalchemy.orm import Session
-import random, hashlib, time
+import hashlib
+import time
 
-router = APIRouter(prefix="/api/auth", tags=["认证"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
-class SendCodeRequest(BaseModel):
-    phone: str
+def make_token(user_id: str) -> str:
+    import base64
+    payload = f"{user_id}:{int(time.time())}"
+    return base64.b64encode(payload.encode()).decode()
 
 class LoginRequest(BaseModel):
     phone: str
     code: str
 
-def gen_mock_code() -> str:
-    return str(random.randint(100000, 999999))
-
-_mock_codes = {}
-
-@router.post("/send-code")
-async def send_code(req: SendCodeRequest, db: Session = Depends(get_db)):
-    code = gen_mock_code()
-    _mock_codes[req.phone] = code
-    print(f"[MOCK SMS] phone={req.phone} code={code}")
-    return {"code": 0, "message": "验证码已发送", "data": {"code": code}}
-
 @router.post("/login")
-async def login(req: LoginRequest, db: Session = Depends(get_db)):
-    real_code = _mock_codes.get(req.phone)
-    if not real_code or real_code != req.code:
-        raise HTTPException(status_code=400, detail="验证码错误")
-    if req.phone in _mock_codes:
-        del _mock_codes[req.phone]
-    
-    user = db.query(User).filter(User.phone == req.phone).first()
-    if not user:
-        user = User(phone=req.phone, nickname=f"用户{req.phone[-4:]}")
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    
-    access_token = create_access_token(str(user.id), user.phone)
-    refresh_token = create_refresh_token(str(user.id))
-    
-    return {
-        "code": 0,
-        "data": {
-            "userId": str(user.id),
-            "nickname": user.nickname,
-            "avatar": user.avatar or "",
-            "accessToken": access_token,
-            "refreshToken": refresh_token
+async def login(req: LoginRequest):
+    # Simple mock login - in production, verify SMS code
+    if len(req.code) == 6:
+        user_id = hashlib.md5(req.phone.encode()).hexdigest()[:16]
+        token = make_token(user_id)
+        return {
+            "code": 0,
+            "data": {
+                "user_id": user_id,
+                "access_token": token,
+                "expires_in": 86400
+            }
         }
-    }
+    raise HTTPException(status_code=400, detail="验证码错误")
+
+@router.post("/send_code")
+async def send_code(phone: str):
+    # Mock - in production, use Aliyun SMS
+    return {"code": 0, "message": "发送成功"}
