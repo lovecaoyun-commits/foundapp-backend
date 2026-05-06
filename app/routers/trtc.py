@@ -2,9 +2,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 import hmac, hashlib, base64, json, time
 
-router = APIRouter(prefix="/v1/trtc", tags=["TRTC"])
+router = APIRouter(prefix="/trtc", tags=["TRTC"])
 
-# Tencent TRTC credentials - from user provided SDKAppID + SecretKey
+# Tencent TRTC credentials
 TRTC_APP_ID = "1600137968"
 TRTC_SECRET_KEY = "5d4ca7c35966f76ab37177e706efff3a8265bea24137d32d06bcc047524751bc"
 
@@ -35,7 +35,7 @@ async def get_user_sig_public(
     user_id: str = Query(..., description="用户ID"),
     expire: int = Query(86400 * 7, description="有效期秒")
 ):
-    """公开获取UserSig，无需登录（通话签名不含敏感信息）"""
+    """公开获取UserSig"""
     sig = gen_user_sig(user_id, expire)
     return {"code": 0, "data": {"userSig": sig, "appId": int(TRTC_APP_ID), "expireTime": int(time.time()) + expire}}
 
