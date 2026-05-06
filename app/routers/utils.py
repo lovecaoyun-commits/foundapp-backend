@@ -3,7 +3,7 @@ import hmac, hashlib, base64, json, time, uuid
 import os
 from datetime import datetime
 
-router = APIRouter(prefix="/v1", tags=["utils"])
+router = APIRouter(prefix="/utils", tags=["utils"])
 
 # Aliyun OSS - use env vars (set in Render dashboard)
 def _d(b64):
