@@ -81,7 +81,9 @@ def get_db():
 init_db()
 
 from app.routers import utils as utils_router
+from app.routers import trtc as trtc_router
 app.include_router(utils_router.router)
+app.include_router(trtc_router.router)
 
 def make_token(user_id):
     return hashlib.md5(f"{user_id}:{time.time()}".encode()).hexdigest()
