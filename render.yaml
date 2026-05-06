@@ -3,10 +3,5 @@ services:
     name: foundapp-backend
     env: python
     pythonVersion: "3.11"
-    buildCommand: POETRY_AUTO_USE=0 pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: POETRY_AUTO_USE
-        value: "0"
-      - key: PYTHONPYTHON_VERSION
-        value: "3.11"
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --reload
