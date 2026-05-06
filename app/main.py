@@ -394,6 +394,12 @@ async def get_areas():
 async def ping():
     return {"code": 0, "data": "pong"}
 
+
+@app.get("/upload_token")
+async def get_upload_token(filename: str = ""):
+    r = utils_router.gen_upload_token(filename)
+    return {"code": 0, "data": {"token": r["token"], "upload_url": r["upload_url"], "key": r["key"]}}
+
 @app.get("/")
 async def root():
     return {"message": "FoundApp API", "version": "2.0.0"}
