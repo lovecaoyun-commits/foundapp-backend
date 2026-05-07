@@ -6,7 +6,7 @@ services:
     name: foundapp-backend
     env: python
     pythonVersion: "3.11"
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --no-cache -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /ping
     plan: free
