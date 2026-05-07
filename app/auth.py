@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
+from typing import Optional
+import jwt
+from jwt.exceptions import DecodeError as JWTError
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.config import settings
@@ -26,11 +28,23 @@ def decode_token(token: str) -> dict:
 async def get_current_user_id(cred: HTTPAuthorizationCredentials = Depends(security)) -> str:
     payload = decode_token(cred.credentials)
     if payload.get("type") != "access":
-        raise HTTPException(status_code=401, detail="token类型错误")
+        raise HTTPException(status_code=401, detail="token不匹配")
     user_id = payload.get("sub")
     if not user_id:
-        raise HTTPException(status_code=401, detail="token解析失败")
+        raise HTTPException(status_code=401, detail="token失效")
     return user_id
 
 def require_auth(user_id: str = Depends(get_current_user_id)) -> str:
     return user_id
+
+async def get_current_user_id_optional(
+    cred: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+) -> str:
+    """Optional version: returns empty string if no token provided."""
+    if cred is None:
+        return ""
+    try:
+        payload = decode_token(cred.credentials)
+        return payload.get("sub", "")
+    except Exception:
+        return ""
