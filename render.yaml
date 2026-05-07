@@ -1,2 +1,12 @@
-
-# force-redeploy-1778127420098
+build:
+  owner: lovecaoyun-commits
+  repo: foundapp-backend
+  branch: main
+  publish: true
+deploy:
+  plan: free
+  region: oregon
+  numInstances: 1
+  runtime: python311
+  buildCommand: pip install -r requirements.txt
+  startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
