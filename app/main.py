@@ -188,8 +188,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 @app.post("/auth/login")
 async def login(req: dict):
     phone, code = req.get('phone',''), req.get('code','')
-    if not validate_phone(phone): return {"code": 400, "message": "Ã¦ÂÂÃ¦ÂÂºÃ¥ÂÂ·Ã¦Â Â¼Ã¥Â¼ÂÃ©ÂÂÃ¨Â¯Â¯"}
-    if code != "000000": return {"code": 400, "message": "Ã©ÂªÂÃ¨Â¯ÂÃ§Â ÂÃ©ÂÂÃ¨Â¯Â¯"}
+    if not validate_phone(phone): return {"code": 400, "message": "ÃÂ¦ÃÂÃÂÃÂ¦ÃÂÃÂºÃÂ¥ÃÂÃÂ·ÃÂ¦ÃÂ ÃÂ¼ÃÂ¥ÃÂ¼ÃÂÃÂ©ÃÂÃÂÃÂ¨ÃÂ¯ÃÂ¯"}
+    if code != "000000": return {"code": 400, "message": "ÃÂ©ÃÂªÃÂÃÂ¨ÃÂ¯ÃÂÃÂ§ÃÂ ÃÂÃÂ©ÃÂÃÂÃÂ¨ÃÂ¯ÃÂ¯"}
     user_id = hashlib.md5(phone.encode()).hexdigest()[:16]
     
     conn = get_conn()
@@ -214,8 +214,8 @@ async def login(req: dict):
 
 @app.post("/auth/send_code")
 async def send_code(phone: str):
-    if not validate_phone(phone): return {"code": 400, "message": "Ã¦ÂÂÃ¦ÂÂºÃ¥ÂÂ·Ã¦Â Â¼Ã¥Â¼ÂÃ©ÂÂÃ¨Â¯Â¯"}
-    return {"code": 0, "message": "Ã¥ÂÂÃ©ÂÂÃ¦ÂÂÃ¥ÂÂ", "data": {"code": "000000"}}
+    if not validate_phone(phone): return {"code": 400, "message": "ÃÂ¦ÃÂÃÂÃÂ¦ÃÂÃÂºÃÂ¥ÃÂÃÂ·ÃÂ¦ÃÂ ÃÂ¼ÃÂ¥ÃÂ¼ÃÂÃÂ©ÃÂÃÂÃÂ¨ÃÂ¯ÃÂ¯"}
+    return {"code": 0, "message": "ÃÂ¥ÃÂÃÂÃÂ©ÃÂÃÂÃÂ¦ÃÂÃÂÃÂ¥ÃÂÃÂ", "data": {"code": "000000"}}
 
 @app.get("/user/profile/{user_id}")
 async def get_profile(user_id: str):
@@ -223,7 +223,7 @@ async def get_profile(user_id: str):
     c = conn.cursor()
     c.execute('SELECT * FROM users WHERE user_id=?', (user_id,))
     u = c.fetchone()
-    result = {"code": 0, "data": dict(u)} if u else {"code": 404, "message": "Ã§ÂÂ¨Ã¦ÂÂ·Ã¤Â¸ÂÃ¥Â­ÂÃ¥ÂÂ¨"}
+    result = {"code": 0, "data": dict(u)} if u else {"code": 404, "message": "ÃÂ§ÃÂÃÂ¨ÃÂ¦ÃÂÃÂ·ÃÂ¤ÃÂ¸ÃÂÃÂ¥ÃÂ­ÃÂÃÂ¥ÃÂÃÂ¨"}
     conn.close()
     return result
 
@@ -236,7 +236,7 @@ async def update_profile(user_id: str, nickname: str = "", avatar: str = "", gen
     conn.commit()
     rows = c.rowcount
     conn.close()
-    return {"code": 0, "message": "Ã¦ÂÂ´Ã¦ÂÂ°Ã¦ÂÂÃ¥ÂÂ" if rows > 0 else "Ã§ÂÂ¨Ã¦ÂÂ·Ã¤Â¸ÂÃ¥Â­ÂÃ¥ÂÂ¨"}
+    return {"code": 0, "message": "ÃÂ¦ÃÂÃÂ´ÃÂ¦ÃÂÃÂ°ÃÂ¦ÃÂÃÂÃÂ¥ÃÂÃÂ" if rows > 0 else "ÃÂ§ÃÂÃÂ¨ÃÂ¦ÃÂÃÂ·ÃÂ¤ÃÂ¸ÃÂÃÂ¥ÃÂ­ÃÂÃÂ¥ÃÂÃÂ¨"}
 
 @app.get("/match/recommendations")
 async def get_recommendations(user_id: str):
@@ -256,11 +256,11 @@ async def like_user(user_id: str, target_id: str):
                (match_id, user_id, target_id, time.time()))
     conn.commit()
     conn.close()
-    return {"code": 0, "message": "Ã¥Â·Â²Ã¥ÂÂÃ¦Â¬Â¢", "data": {"match_id": match_id}}
+    return {"code": 0, "message": "ÃÂ¥ÃÂ·ÃÂ²ÃÂ¥ÃÂÃÂÃÂ¦ÃÂ¬ÃÂ¢", "data": {"match_id": match_id}}
 
 @app.post("/match/dislike")
 async def dislike_user(user_id: str, target_id: str):
-    return {"code": 0, "message": "Ã¥Â·Â²Ã¨Â·Â³Ã¨Â¿Â"}
+    return {"code": 0, "message": "ÃÂ¥ÃÂ·ÃÂ²ÃÂ¨ÃÂ·ÃÂ³ÃÂ¨ÃÂ¿ÃÂ"}
 
 @app.get("/match/list")
 async def get_matches(user_id: str):
@@ -307,7 +307,7 @@ async def send_message(match_id: str, sender_id: str, receiver_id: str = "", con
         except:
             pass
     
-    return {"code": 0, "message": "Ã¥ÂÂÃ©ÂÂÃ¦ÂÂÃ¥ÂÂ", "data": {"msg_id": msg_id}}
+    return {"code": 0, "message": "ÃÂ¥ÃÂÃÂÃÂ©ÃÂÃÂÃÂ¦ÃÂÃÂÃÂ¥ÃÂÃÂ", "data": {"msg_id": msg_id}}
 
 @app.get("/moments/list")
 async def get_moments(page: int = 1, size: int = 20):
@@ -328,7 +328,7 @@ async def publish(user_id: str, content: str = "", images: str = "[]"):
                (moment_id, user_id, content, images, time.time()))
     conn.commit()
     conn.close()
-    return {"code": 0, "message": "Ã¥ÂÂÃ¥Â¸ÂÃ¦ÂÂÃ¥ÂÂ", "data": {"moment_id": moment_id}}
+    return {"code": 0, "message": "ÃÂ¥ÃÂÃÂÃÂ¥ÃÂ¸ÃÂÃÂ¦ÃÂÃÂÃÂ¥ÃÂÃÂ", "data": {"moment_id": moment_id}}
 
 @app.post("/moments/like")
 async def like_moment(moment_id: str, user_id: str):
@@ -342,7 +342,7 @@ async def like_moment(moment_id: str, user_id: str):
         c.execute('UPDATE moments SET likes=? WHERE moment_id=?', (json.dumps(likes), moment_id))
         conn.commit()
     conn.close()
-    return {"code": 0, "message": "Ã¥Â·Â²Ã§ÂÂ¹Ã¨ÂµÂ"}
+    return {"code": 0, "message": "ÃÂ¥ÃÂ·ÃÂ²ÃÂ§ÃÂÃÂ¹ÃÂ¨ÃÂµÃÂ"}
 
 
 // === ANDROID MOMENTS FEED (compatible with FeedItem model) ===
@@ -436,7 +436,7 @@ async def get_balance(user_id: str):
         conn.commit()
         c.execute('SELECT * FROM wallets WHERE user_id=?', (user_id,))
         w = c.fetchone()
-    result = {"code": 0, "data": dict(w)} if w else {"code": 404, "message": "Ã©ÂÂ±Ã¥ÂÂÃ¤Â¸ÂÃ¥Â­ÂÃ¥ÂÂ¨"}
+    result = {"code": 0, "data": dict(w)} if w else {"code": 404, "message": "ÃÂ©ÃÂÃÂ±ÃÂ¥ÃÂÃÂÃÂ¤ÃÂ¸ÃÂÃÂ¥ÃÂ­ÃÂÃÂ¥ÃÂÃÂ¨"}
     conn.close()
     return result
 
@@ -456,9 +456,9 @@ async def recharge(user_id: str, package_id: str):
         rows = c.rowcount
         conn.close()
         if rows > 0:
-            return {"code": 0, "message": "Ã¥ÂÂÃ¥ÂÂ¼Ã¦ÂÂÃ¥ÂÂ", "data": {"coins": coins}}
-        return {"code": 1, "message": "Ã§ÂÂ¨Ã¦ÂÂ·Ã¤Â¸ÂÃ¥Â­ÂÃ¥ÂÂ¨"}
-    return {"code": 1, "message": "Ã¥Â¥ÂÃ©Â¤ÂÃ¤Â¸ÂÃ¥Â­ÂÃ¥ÂÂ¨"}
+            return {"code": 0, "message": "ÃÂ¥ÃÂÃÂÃÂ¥ÃÂÃÂ¼ÃÂ¦ÃÂÃÂÃÂ¥ÃÂÃÂ", "data": {"coins": coins}}
+        return {"code": 1, "message": "ÃÂ§ÃÂÃÂ¨ÃÂ¦ÃÂÃÂ·ÃÂ¤ÃÂ¸ÃÂÃÂ¥ÃÂ­ÃÂÃÂ¥ÃÂÃÂ¨"}
+    return {"code": 1, "message": "ÃÂ¥ÃÂ¥ÃÂÃÂ©ÃÂ¤ÃÂÃÂ¤ÃÂ¸ÃÂÃÂ¥ÃÂ­ÃÂÃÂ¥ÃÂÃÂ¨"}
 
 @app.post("/trtc/sign")
 async def trtc_sign(user_id: str, room_id: str):
@@ -483,6 +483,11 @@ async def get_upload_token(filename: str = ""):
     r = utils_router.gen_upload_token(filename)
     return {"code": 0, "data": {"token": r["token"], "upload_url": r["upload_url"], "key": r["key"]}}
 
+
+
+@app.get("/api/debug")
+async def debug_endpoint():
+    return {"status": "ok", "commit": "2026-05-07T02:24:22.936Z"}
 @app.get("/")
 async def root():
     return {"message": "FoundApp API", "version": "2.0.0"}
